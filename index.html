@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>주문서 변환기</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Noto+Sans+KR:wght@300;400;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#0a0a0f; --card:#13131a; --border:#1e1e2e;
+  --accent:#4fffb0; --accent2:#FFD700; --text:#e8e8f0; --muted:#6b6b8a;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--text);font-family:'Noto Sans KR',sans-serif;min-height:100vh;}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(79,255,176,.03)1px,transparent 1px),linear-gradient(90deg,rgba(79,255,176,.03)1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0;}
+
+/* ── 허브 화면 ── */
+.hub{position:relative;z-index:1;max-width:860px;margin:0 auto;padding:60px 24px 80px;}
+.hub header{text-align:center;margin-bottom:56px;}
+.badge{display:inline-block;font-family:'Space Mono',monospace;font-size:.7rem;color:var(--accent);border:1px solid var(--accent);padding:4px 12px;letter-spacing:2px;margin-bottom:20px;}
+.hub h1{font-family:'Bebas Neue',sans-serif;font-size:clamp(2.8rem,8vw,4.8rem);letter-spacing:3px;line-height:1;margin-bottom:12px;}
+.hub h1 span{color:var(--accent);}
+.hub .sub{font-size:.85rem;color:var(--muted);letter-spacing:1px;}
+.sec-title{font-family:'Space Mono',monospace;font-size:.68rem;color:var(--muted);letter-spacing:3px;text-transform:uppercase;margin-bottom:16px;padding-left:2px;}
+.hub-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;margin-bottom:40px;}
+.hub-card{background:var(--card);border:1px solid var(--border);border-radius:2px;padding:26px 22px 40px;cursor:pointer;position:relative;overflow:hidden;transition:border-color .2s,transform .2s;user-select:none;}
+.hub-card::before{content:'';position:absolute;top:0;left:0;width:3px;height:100%;background:var(--c,var(--accent));transform:scaleY(0);transform-origin:bottom;transition:transform .25s;}
+.hub-card::after{content:'';position:absolute;inset:0;background:linear-gradient(135deg,var(--c,var(--accent)) 0%,transparent 60%);opacity:0;transition:opacity .25s;}
+.hub-card:hover{border-color:var(--c,var(--accent));transform:translateY(-2px);}
+.hub-card:hover::before{transform:scaleY(1);}
+.hub-card:hover::after{opacity:.04;}
+.hub-card:hover .card-arrow{opacity:1;transform:translateX(0);}
+.card-platform{font-family:'Space Mono',monospace;font-size:.63rem;color:var(--c,var(--accent));letter-spacing:2px;text-transform:uppercase;margin-bottom:8px;}
+.card-title{font-size:1rem;font-weight:700;line-height:1.4;margin-bottom:6px;}
+.card-desc{font-size:.76rem;color:var(--muted);line-height:1.6;}
+.card-arrow{position:absolute;bottom:18px;right:18px;font-family:'Space Mono',monospace;font-size:.75rem;color:var(--c,var(--accent));opacity:0;transform:translateX(-6px);transition:opacity .2s,transform .2s;}
+.card-soon{opacity:.38!important;cursor:default;pointer-events:none;border-style:dashed;}
+
+/* ── 변환기 화면 ── */
+.cvt{display:none;position:relative;z-index:1;max-width:860px;margin:0 auto;padding:40px 24px 80px;}
+.cvt.active{display:block;}
+.back-btn{display:inline-flex;align-items:center;gap:6px;font-family:'Space Mono',monospace;font-size:.72rem;color:var(--muted);cursor:pointer;margin-bottom:32px;padding:6px 0;letter-spacing:1px;transition:color .2s;background:none;border:none;}
+.back-btn:hover{color:var(--accent);}
+.cvt header{text-align:center;margin-bottom:40px;}
+.cvt h1{font-family:'Bebas Neue',sans-serif;font-size:clamp(2rem,6vw,3.6rem);letter-spacing:3px;line-height:1;margin-bottom:10px;}
+.cvt h1 span{color:var(--accent);}
+.cvt .sub{font-size:.82rem;color:var(--accent2);letter-spacing:.5px;}
+
+/* 공통 변환기 내부 스타일 */
+.info{background:var(--card);border:1px solid var(--border);border-radius:2px;padding:18px 20px;margin-bottom:16px;font-size:.8rem;}
+.info strong{display:block;margin-bottom:10px;font-size:.82rem;color:var(--accent);}
+.mgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:6px;}
+.mrow{display:flex;align-items:center;gap:6px;font-size:.75rem;}
+.src{color:var(--muted);}
+.ar{color:var(--accent);font-family:'Space Mono',monospace;font-size:.7rem;}
+.dst{color:var(--text);}
+.warn{background:#1a1500;border:1px solid #3a3000;border-radius:2px;padding:14px 18px;margin-bottom:24px;font-size:.78rem;color:#c8a800;display:flex;gap:10px;align-items:flex-start;line-height:1.6;}
+.steps{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;}
+@media(max-width:560px){.steps{grid-template-columns:1fr;}}
+.card{background:var(--card);border:1px solid var(--border);border-radius:2px;padding:20px;}
+.snum{font-family:'Space Mono',monospace;font-size:.65rem;color:var(--accent);letter-spacing:2px;margin-bottom:8px;}
+.stitle{font-size:.9rem;font-weight:700;margin-bottom:14px;line-height:1.4;}
+.zone{border:1.5px dashed var(--border);border-radius:2px;padding:24px 16px;text-align:center;cursor:pointer;position:relative;transition:border-color .2s,background .2s;}
+.zone:hover,.zone.drag{border-color:var(--accent);background:rgba(79,255,176,.04);}
+.zone.ok{border-color:var(--accent);border-style:solid;}
+.zone input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;}
+.zicon{font-size:1.6rem;display:block;margin-bottom:6px;}
+.ztxt{font-size:.78rem;color:var(--muted);}
+.zname{font-size:.72rem;color:var(--accent);margin-top:4px;word-break:break-all;}
+.err{display:none;background:#1a0808;border:1px solid #5a1a1a;color:#ff6b6b;border-radius:2px;padding:10px 14px;font-size:.8rem;margin-bottom:12px;}
+.err.on{display:block;}
+.pbar{display:none;height:3px;background:var(--border);border-radius:2px;margin-bottom:8px;overflow:hidden;}
+.pbar.on{display:block;}
+.pfill{height:100%;background:var(--accent);width:0;transition:width .3s;}
+.stxt{font-family:'Space Mono',monospace;font-size:.7rem;color:var(--muted);min-height:18px;margin-bottom:16px;}
+.btn{width:100%;padding:14px;background:transparent;border:1.5px solid var(--accent);color:var(--accent);font-family:'Bebas Neue',sans-serif;font-size:1.2rem;letter-spacing:3px;cursor:pointer;border-radius:2px;transition:background .2s,color .2s;}
+.btn:hover:not(:disabled){background:var(--accent);color:#000;}
+.btn:disabled{opacity:.35;cursor:not-allowed;}
+.result{display:none;margin-top:24px;background:var(--card);border:1px solid var(--border);border-radius:2px;padding:24px;}
+.result.on{display:block;}
+.rhead{display:flex;align-items:center;gap:14px;margin-bottom:20px;}
+.rico{font-size:1.8rem;}
+.rtitle{font-size:1.1rem;font-weight:700;}
+.rsub{font-size:.78rem;color:var(--muted);}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;}
+.sbox{background:var(--bg);border:1px solid var(--border);border-radius:2px;padding:14px;text-align:center;}
+.snum2{font-family:'Bebas Neue',sans-serif;font-size:2rem;color:var(--accent);line-height:1;}
+.slbl{font-size:.7rem;color:var(--muted);margin-top:4px;}
+.plbl{font-family:'Space Mono',monospace;font-size:.65rem;color:var(--muted);margin-bottom:8px;}
+.twrap{overflow-x:auto;margin-bottom:16px;}
+table{width:100%;border-collapse:collapse;font-size:.75rem;}
+th{background:var(--bg);color:var(--muted);padding:8px 10px;text-align:left;font-weight:400;border-bottom:1px solid var(--border);}
+td{padding:7px 10px;border-bottom:1px solid var(--border);color:var(--text);}
+.dl{width:100%;padding:12px;background:var(--accent);border:none;color:#000;font-family:'Bebas Neue',sans-serif;font-size:1.1rem;letter-spacing:3px;cursor:pointer;border-radius:2px;}
+.dl:hover{opacity:.9;}
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════
+     허브 화면
+══════════════════════════════════════ -->
+<div class="hub" id="hub">
+  <header>
+    <div class="badge">ORDER CONVERTER HUB</div>
+    <h1>주문서 <span>변환기</span></h1>
+    <p class="sub">쇼핑몰 주문서 → 이카운트 자동 변환</p>
+  </header>
+
+  <div class="sec-title">Naver Smart Store</div>
+  <div class="hub-grid">
+    <div class="hub-card" style="--c:#4fffb0;" onclick="showCvt('ds')">
+      <div class="card-platform">Naver · Dayseven</div>
+      <div class="card-title">데이세븐<br>스마트스토어</div>
+      <div class="card-desc">옵션관리코드 → 품목코드<br>자동 변환</div>
+      <div class="card-arrow">→</div>
+    </div>
+    <div class="hub-card" style="--c:#FFD700;" onclick="showCvt('bb')">
+      <div class="card-platform">Naver · Buddybear</div>
+      <div class="card-title">버디베어<br>스마트스토어</div>
+      <div class="card-desc">옵션관리코드 → 품목코드<br>자동 변환</div>
+      <div class="card-arrow">→</div>
+    </div>
+  </div>
+
+  <div class="sec-title">Coupang</div>
+  <div class="hub-grid">
+    <div class="hub-card" style="--c:#ff6b6b;" onclick="showCvt('cp')">
+      <div class="card-platform">Coupang · Dayseven</div>
+      <div class="card-title">데이세븐<br>쿠팡</div>
+      <div class="card-desc">업체상품코드 → 품목코드<br>자동 변환</div>
+      <div class="card-arrow">→</div>
+    </div>
+    <div class="hub-card card-soon" style="--c:#555;">
+      <div class="card-platform">Coming Soon</div>
+      <div class="card-title">추가 예정</div>
+      <div class="card-desc">새 변환기가<br>곧 추가됩니다</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     변환기 화면 (공통 UI)
+══════════════════════════════════════ -->
+<div class="cvt" id="cvt">
+  <button class="back-btn" onclick="showHub()">← 목록으로</button>
+
+  <header>
+    <div class="badge" id="cvt-badge">ORDER CONVERTER</div>
+    <div id="cvt-brand" style="font-size:1.1rem;font-weight:700;color:#fff;margin-bottom:8px;letter-spacing:1px;"></div>
+    <h1>주문서 <span>자동 변환기</span></h1>
+    <p class="sub" id="cvt-sub"></p>
+  </header>
+
+  <div class="info" id="cvt-info"></div>
+
+  <div class="warn">
+    <span>🔒</span>
+    <span><strong style="color:#fff">원본 xlsx ZIP을 직접 수정</strong>하는 방식으로 서식·수식·병합셀이 100% 보존됩니다.</span>
+  </div>
+
+  <div class="steps">
+    <div class="card" id="c1">
+      <div class="snum">STEP 01</div>
+      <div class="stitle">이카운트 주문서 양식<br><small style="color:var(--muted);font-weight:300;">주문서_수기입력 시트 포함</small></div>
+      <div class="zone" id="z1">
+        <input type="file" id="f1" accept=".xlsx,.xls" onchange="load(1,this)">
+        <span class="zicon" id="i1">📋</span>
+        <div class="ztxt" id="t1">클릭하거나 드래그하세요</div>
+        <div class="zname" id="n1"></div>
+      </div>
+    </div>
+    <div class="card" id="c2">
+      <div class="snum">STEP 02</div>
+      <div class="stitle" id="step2-title">주문서 업로드</div>
+      <div class="zone" id="z2">
+        <input type="file" id="f2" accept=".xlsx,.xls" onchange="load(2,this)">
+        <span class="zicon" id="i2">🛒</span>
+        <div class="ztxt" id="t2">클릭하거나 드래그하세요</div>
+        <div class="zname" id="n2"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="err" id="err"></div>
+  <div class="pbar" id="pb"><div class="pfill" id="pf"></div></div>
+  <div class="stxt" id="st"></div>
+  <button class="btn" id="go" onclick="run()" disabled>✦ 변환 시작</button>
+
+  <div class="result" id="res">
+    <div class="rhead">
+      <div class="rico">✅</div>
+      <div><div class="rtitle">변환 완료!</div><div class="rsub" id="rsub"></div></div>
+    </div>
+    <div class="stats">
+      <div class="sbox"><div class="snum2" id="st1">0</div><div class="slbl">총 주문 건수</div></div>
+      <div class="sbox"><div class="snum2" id="st2">0</div><div class="slbl">품목코드 입력</div></div>
+      <div class="sbox"><div class="snum2" id="st3">0</div><div class="slbl">품목코드 없음</div></div>
+    </div>
+    <div class="plbl">// 미리보기 (최대 5건)</div>
+    <div class="twrap">
+      <table><thead><tr><th>품목코드</th><th>수량</th><th>수취인</th><th>전화번호1</th><th>우편번호</th><th>배송주소</th><th>배송메시지</th></tr></thead>
+      <tbody id="pb2"></tbody></table>
+    </div>
+    <button class="dl" onclick="dl()">⬇ 이카운트 주문서 다운로드 (.xlsx)</button>
+  </div>
+</div>
+
+<!-- 라이브러리 -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<script>
+// ── 변환기 설정 ──────────────────────────────────────────
+const CONVERTERS = {
+  ds: {
+    badge:  'ORDER CONVERTER v2.3',
+    brand:  '데이세븐 스마트스토어',
+    sub:    '데이세븐 스마트스토어 → 이카운트 주문서 (원본 서식 100% 보존)',
+    step2:  '스마트스토어 주문서<br><small style="color:var(--muted);font-weight:300;">발주발송관리 시트 포함</small>',
+    info:   `<strong>📌 자동 변환 항목</strong><div class="mgrid">
+      <div class="mrow"><span class="src">옵션관리코드</span><span class="ar">→</span><span class="dst">품목코드 (A열)</span></div>
+      <div class="mrow"><span class="src">수량</span><span class="ar">→</span><span class="dst">수량 (E열)</span></div>
+      <div class="mrow"><span class="src">수취인명</span><span class="ar">→</span><span class="dst">수취인 (H열)</span></div>
+      <div class="mrow"><span class="src">수취인연락처1</span><span class="ar">→</span><span class="dst">전화번호1 (I열)</span></div>
+      <div class="mrow"><span class="src">수취인연락처2</span><span class="ar">→</span><span class="dst">전화번호2 (J열)</span></div>
+      <div class="mrow"><span class="src">우편번호</span><span class="ar">→</span><span class="dst">우편번호 (K열)</span></div>
+      <div class="mrow"><span class="src">통합배송지</span><span class="ar">→</span><span class="dst">배송주소 (L열)</span></div>
+      <div class="mrow"><span class="src">배송메세지</span><span class="ar">→</span><span class="dst">배송메시지 (M열)</span></div>
+    </div>`,
+    filenameSuffix: '_데이세븐.xlsx',
+    adaptorName: 'naver',
+    remitter: '데이세븐',
+  },
+  bb: {
+    badge:  'ORDER CONVERTER v1.0',
+    brand:  '버디베어 스마트스토어',
+    sub:    '버디베어 스마트스토어 → 이카운트 주문서 (원본 서식 100% 보존)',
+    step2:  '스마트스토어 주문서<br><small style="color:var(--muted);font-weight:300;">발주발송관리 시트 포함</small>',
+    info:   `<strong>📌 자동 변환 항목</strong><div class="mgrid">
+      <div class="mrow"><span class="src">옵션관리코드</span><span class="ar">→</span><span class="dst">품목코드 (A열)</span></div>
+      <div class="mrow"><span class="src">수량</span><span class="ar">→</span><span class="dst">수량 (E열)</span></div>
+      <div class="mrow"><span class="src">수취인명</span><span class="ar">→</span><span class="dst">수취인 (H열)</span></div>
+      <div class="mrow"><span class="src">수취인연락처1</span><span class="ar">→</span><span class="dst">전화번호1 (I열)</span></div>
+      <div class="mrow"><span class="src">우편번호</span><span class="ar">→</span><span class="dst">우편번호 (K열)</span></div>
+      <div class="mrow"><span class="src">통합배송지</span><span class="ar">→</span><span class="dst">배송주소 (L열)</span></div>
+      <div class="mrow"><span class="src">배송메세지</span><span class="ar">→</span><span class="dst">배송메시지 (M열)</span></div>
+    </div>`,
+    filenameSuffix: '_버디베어.xlsx',
+    adaptorName: 'naver',
+    remitter: '버디베어',
+  },
+  cp: {
+    badge:  'ORDER CONVERTER v1.0',
+    brand:  '데이세븐 쿠팡',
+    sub:    '데이세븐 쿠팡 → 이카운트 주문서 (원본 서식 100% 보존)',
+    step2:  '쿠팡 주문서<br><small style="color:var(--muted);font-weight:300;">배송관리 다운로드 파일</small>',
+    info:   `<strong>📌 자동 변환 항목</strong><div class="mgrid">
+      <div class="mrow"><span class="src">업체상품코드</span><span class="ar">→</span><span class="dst">품목코드 (A열)</span></div>
+      <div class="mrow"><span class="src">구매수(수량)</span><span class="ar">→</span><span class="dst">수량 (E열)</span></div>
+      <div class="mrow"><span class="src">수취인이름</span><span class="ar">→</span><span class="dst">수취인 (H열)</span></div>
+      <div class="mrow"><span class="src">수취인전화번호</span><span class="ar">→</span><span class="dst">전화번호1 (I열)</span></div>
+      <div class="mrow"><span class="src">우편번호</span><span class="ar">→</span><span class="dst">우편번호 (K열)</span></div>
+      <div class="mrow"><span class="src">수취인 주소</span><span class="ar">→</span><span class="dst">배송주소 (L열)</span></div>
+      <div class="mrow"><span class="src">배송메세지</span><span class="ar">→</span><span class="dst">배송메시지 (M열)</span></div>
+    </div>`,
+    filenameSuffix: '_데이세븐_쿠팡.xlsx',
+    adaptorName: 'coupang',
+    remitter: '데이세븐',
+  },
+};
+
+// ── 상태 ────────────────────────────────────────────────
+let currentCvt = null;
+let buf1 = null, buf2 = null, blob = null;
+let file2Name = '';
+
+// ── 화면 전환 ────────────────────────────────────────────
+function showHub() {
+  document.getElementById('hub').style.display = '';
+  document.getElementById('cvt').classList.remove('active');
+  // 상태 초기화
+  buf1=null; buf2=null; blob=null; file2Name='';
+  [1,2].forEach(n=>{
+    document.getElementById('i'+n).textContent = n===1?'📋':'🛒';
+    document.getElementById('t'+n).textContent = '클릭하거나 드래그하세요';
+    document.getElementById('n'+n).textContent = '';
+    document.getElementById('z'+n).classList.remove('ok','drag');
+    document.getElementById('c'+n).classList.remove('done');
+  });
+  document.getElementById('go').disabled = true;
+  document.getElementById('res').classList.remove('on');
+  document.getElementById('err').classList.remove('on');
+  document.getElementById('pb').classList.remove('on');
+  document.getElementById('st').textContent = '';
+}
+
+function showCvt(key) {
+  currentCvt = key;
+  const cfg = CONVERTERS[key];
+  document.getElementById('hub').style.display = 'none';
+  document.getElementById('cvt').classList.add('active');
+  document.getElementById('cvt-badge').textContent = cfg.badge;
+  document.getElementById('cvt-brand').textContent = cfg.brand;
+  document.getElementById('cvt-sub').textContent = cfg.sub;
+  document.getElementById('cvt-info').innerHTML = cfg.info;
+  document.getElementById('step2-title').innerHTML = cfg.step2;
+}
+
+// ── 파일 로드 ────────────────────────────────────────────
+function load(n, inp) {
+  const file = (inp.files||[])[0]; if(!file) return;
+  if(n===2) file2Name = file.name;
+  const r = new FileReader();
+  r.onload = e => {
+    if(n===1) buf1=e.target.result; else buf2=e.target.result;
+    document.getElementById('i'+n).textContent = '✅';
+    document.getElementById('t'+n).textContent = '업로드 완료';
+    document.getElementById('n'+n).textContent = file.name;
+    document.getElementById('z'+n).classList.add('ok');
+    document.getElementById('c'+n).classList.add('done');
+    document.getElementById('go').disabled = !(buf1&&buf2);
+  };
+  r.readAsArrayBuffer(file);
+}
+
+function prog(p,t){
+  document.getElementById('pb').classList.add('on');
+  document.getElementById('pf').style.width=p+'%';
+  document.getElementById('st').textContent=t;
+}
+function showErr(m){
+  const e=document.getElementById('err'); e.textContent='⚠ '+m; e.classList.add('on');
+  document.getElementById('pb').classList.remove('on'); document.getElementById('st').textContent='';
+}
+function hideErr(){ document.getElementById('err').classList.remove('on'); }
+
+// ── XML 유틸 ────────────────────────────────────────────
+function esc(s){
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');
+}
+function extractStyle(xml,cellRef){
+  const m=new RegExp(`<c r="${cellRef}" s="(\\d+)"`).exec(xml);
+  return m?m[1]:null;
+}
+function setCellStr(xml,cellRef,value){
+  if(!value&&value!==0) return xml;
+  const v=esc(String(value));
+  const sid=extractStyle(xml,cellRef);
+  const sAttr=sid?` s="${sid}"`:'';
+  const newCell=`<c r="${cellRef}"${sAttr} t="inlineStr"><is><t>${v}</t></is></c>`;
+  let result=xml;
+  const p1=new RegExp(`<c r="${cellRef}" s="\\d+"[^>]*/>`, 'g');
+  const p2=new RegExp(`<c r="${cellRef}" s="\\d+"[^>]*>(?:<f[^>]*>[^<]*<\\/f>)?<v\\s*\\/><\\/c>`, 'g');
+  const p3=new RegExp(`<c r="${cellRef}" s="\\d+"[^>]*><f[^>]*>[\\s\\S]*?<\\/f><v>[^<]*<\\/v><\\/c>`, 'g');
+  if(p1.test(result)) result=result.replace(p1,newCell);
+  else if(p2.test(result)) result=result.replace(p2,newCell);
+  else if(p3.test(result)) result=result.replace(p3,newCell);
+  return result;
+}
+function setCellNum(xml,cellRef,value){
+  const v=Number(value);
+  const sid=extractStyle(xml,cellRef);
+  const sAttr=sid?` s="${sid}"`:'';
+  const newCell=`<c r="${cellRef}"${sAttr}><v>${v}</v></c>`;
+  let result=xml;
+  const p1=new RegExp(`<c r="${cellRef}" s="\\d+"[^>]*/>`, 'g');
+  const p2=new RegExp(`<c r="${cellRef}" s="\\d+"[^>]*>(?:<f[^>]*>[^<]*<\\/f>)?<v\\s*\\/><\\/c>`, 'g');
+  const p3=new RegExp(`<c r="${cellRef}" s="\\d+"[^>]*><f[^>]*>[\\s\\S]*?<\\/f><v>[^<]*<\\/v><\\/c>`, 'g');
+  if(p1.test(result)) result=result.replace(p1,newCell);
+  else if(p2.test(result)) result=result.replace(p2,newCell);
+  else if(p3.test(result)) result=result.replace(p3,newCell);
+  return result;
+}
+
+// ── 주문서 파싱 어댑터 ──────────────────────────────────
+function parseNaver(buf) {
+  const wb = XLSX.read(buf, {type:'array'});
+  const sn = wb.SheetNames.find(s=>s.includes('발주')||s.includes('발송')||s.includes('주문'));
+  if(!sn) throw new Error('스마트스토어 파일에서 주문 시트를 찾을 수 없습니다.');
+  const raw = XLSX.utils.sheet_to_json(wb.Sheets[sn], {header:1, defval:''});
+  let hi=-1;
+  for(let i=0;i<Math.min(raw.length,10);i++){
+    if(raw[i]&&raw[i].includes('상품주문번호')){ hi=i; break; }
+  }
+  if(hi<0) throw new Error('스마트스토어 헤더 행을 찾을 수 없습니다.');
+  const H=raw[hi], C={};
+  ['수취인명','수취인연락처1','수취인연락처2','우편번호','통합배송지','기본배송지','상세배송지','배송메세지','옵션관리코드','수량','판매자 상품코드']
+    .forEach(k=>{ C[k]=H.indexOf(k); });
+  const orders=[];
+  for(let i=hi+1;i<raw.length;i++){
+    const row=raw[i];
+    if(!row||!row[C['수취인명']]) continue;
+    const tel2r=C['수취인연락처2']>=0?String(row[C['수취인연락처2']]||'').trim().replace(/^(NaN|undefined|null)$/i,''):'';
+    const tel1=String(row[C['수취인연락처1']]||'').trim();
+    let addr='';
+    if(C['통합배송지']>=0&&row[C['통합배송지']]) addr=String(row[C['통합배송지']]).trim();
+    else {
+      const b=C['기본배송지']>=0?String(row[C['기본배송지']]||'').trim():'';
+      const d=C['상세배송지']>=0?String(row[C['상세배송지']]||'').trim():'';
+      addr=d?`${b} ${d}`.trim():b;
+    }
+    const codeW=C['옵션관리코드']>=0?String(row[C['옵션관리코드']]||'').trim():'';
+    const codeAO=C['판매자 상품코드']>=0?String(row[C['판매자 상품코드']]||'').trim():'';
+    orders.push({
+      code: codeW||codeAO,
+      qty: C['수량']>=0?(Number(row[C['수량']])||1):1,
+      name: String(row[C['수취인명']]||'').trim(),
+      tel1, tel2:(tel2r&&tel2r!==tel1)?tel2r:'',
+      zip: C['우편번호']>=0?String(row[C['우편번호']]||'').trim():'',
+      addr,
+      msg: C['배송메세지']>=0?String(row[C['배송메세지']]||'').trim():'',
+    });
+  }
+  return orders;
+}
+
+function parseCoupang(buf) {
+  const wb = XLSX.read(buf, {type:'array'});
+  const sn = wb.SheetNames[0];
+  const raw = XLSX.utils.sheet_to_json(wb.Sheets[sn], {header:1, defval:''});
+  let hi=-1;
+  for(let i=0;i<Math.min(raw.length,10);i++){
+    if(raw[i]&&raw[i].includes('업체상품코드')){ hi=i; break; }
+  }
+  if(hi<0) throw new Error('쿠팡 주문서 헤더 행을 찾을 수 없습니다.');
+  const H=raw[hi], C={};
+  ['수취인이름','수취인전화번호','우편번호','수취인 주소','배송메세지','업체상품코드','구매수(수량)']
+    .forEach(k=>{ C[k]=H.indexOf(k); });
+  const orders=[];
+  for(let i=hi+1;i<raw.length;i++){
+    const row=raw[i];
+    if(!row||!row[C['수취인이름']]) continue;
+    orders.push({
+      code: C['업체상품코드']>=0?String(row[C['업체상품코드']]||'').trim():'',
+      qty:  C['구매수(수량)']>=0?(Number(row[C['구매수(수량)']])||1):1,
+      name: String(row[C['수취인이름']]||'').trim(),
+      tel1: C['수취인전화번호']>=0?String(row[C['수취인전화번호']]||'').trim():'',
+      tel2: '',
+      zip:  C['우편번호']>=0?String(row[C['우편번호']]||'').trim():'',
+      addr: C['수취인 주소']>=0?String(row[C['수취인 주소']]||'').trim():'',
+      msg:  C['배송메세지']>=0?String(row[C['배송메세지']]||'').trim():'',
+    });
+  }
+  return orders;
+}
+
+// ── 날짜 추출 ────────────────────────────────────────────
+function extractDate(filename) {
+  // 쿠팡: 2026-04-27 형식
+  const mDash = filename.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if(mDash) return { date8: mDash[1]+mDash[2]+mDash[3], date6: (mDash[1]+mDash[2]+mDash[3]).slice(2) };
+  // 네이버: 20260424 형식
+  const mFlat = filename.match(/(20\d{6})/);
+  if(mFlat) return { date8: mFlat[1], date6: mFlat[1].slice(2) };
+  return { date8: '', date6: '' };
+}
+
+// ── 메인 변환 함수 ───────────────────────────────────────
+async function run() {
+  hideErr(); blob=null;
+  document.getElementById('res').classList.remove('on');
+  const cfg = CONVERTERS[currentCvt];
+  try {
+    prog(10, '주문서 파싱 중...');
+
+    // 1. 주문서 파싱
+    const orders = cfg.adaptorName==='naver' ? parseNaver(buf2) : parseCoupang(buf2);
+    if(!orders.length){ showErr('변환할 주문 데이터가 없습니다.'); return; }
+
+    // 2. 날짜 추출
+    const { date8, date6 } = extractDate(file2Name);
+
+    prog(30, '이카운트 양식 ZIP 열기...');
+
+    // 3. 이카운트 양식 ZIP 열기
+    const zip = await JSZip.loadAsync(buf1);
+    const SHEET_PATH = 'xl/worksheets/sheet3.xml';
+    const SS_PATH    = 'xl/sharedStrings.xml';
+    const sheetFile  = zip.file(SHEET_PATH);
+    const ssFile     = zip.file(SS_PATH);
+    if(!sheetFile){ showErr('이카운트 파일에서 sheet3.xml을 찾을 수 없습니다.'); return; }
+    if(!ssFile){    showErr('이카운트 파일에서 sharedStrings.xml을 찾을 수 없습니다.'); return; }
+
+    prog(50, `${orders.length}건 데이터를 XML에 삽입 중...`);
+
+    let xml = await sheetFile.async('string');
+    let ss  = await ssFile.async('string');
+
+    // 4. sharedStrings 파싱
+    const siRaw=[], siMap={};
+    const siRe=/<si>([\s\S]*?)<\/si>/g;
+    let m2;
+    while((m2=siRe.exec(ss))!==null){
+      const tv=/<t[^>]*>([^<]*)<\/t>/.exec(m2[1]);
+      const str=tv?tv[1]:'';
+      if(str&&siMap[str]===undefined) siMap[str]=siRaw.length;
+      siRaw.push(m2[0]);
+    }
+    function getSsIdx(val){
+      const v=String(val);
+      if(siMap[v]!==undefined) return siMap[v];
+      const idx=siRaw.length; siMap[v]=idx;
+      siRaw.push(`<si><t xml:space="preserve">${esc(v)}</t></si>`);
+      return idx;
+    }
+    function setCellSS(xml,cellRef,ssIdx){
+      const sid=extractStyle(xml,cellRef);
+      const sAttr=sid?` s="${sid}"`:'';
+      const newCell=`<c r="${cellRef}"${sAttr} t="s"><v>${ssIdx}</v></c>`;
+      let result=xml;
+      const p1=new RegExp(`<c r="${cellRef}" s="\\d+"[^>]*/>`, 'g');
+      const p2=new RegExp(`<c r="${cellRef}" s="\\d+"[^>]*>(?:<f[^>]*>[^<]*<\\/f>)?<v\\s*\\/><\\/c>`, 'g');
+      const p3=new RegExp(`<c r="${cellRef}" s="\\d+"[^>]*><f[^>]*>[\\s\\S]*?<\\/f><v>[^<]*<\\/v><\\/c>`, 'g');
+      if(p1.test(result)) result=result.replace(p1,newCell);
+      else if(p2.test(result)) result=result.replace(p2,newCell);
+      else if(p3.test(result)) result=result.replace(p3,newCell);
+      return result;
+    }
+
+    // 5. 데이터 삽입
+    const START=17; let converted=0, skipped=0;
+    const remitter = cfg.remitter;
+    for(let i=0;i<orders.length;i++){
+      const o=orders[i], row=START+i;
+      xml=setCellNum(xml,`E${row}`,o.qty);
+      if(o.name) xml=setCellStr(xml,`H${row}`,o.name);
+      if(o.tel1) xml=setCellStr(xml,`I${row}`,o.tel1);
+      if(o.tel2) xml=setCellStr(xml,`J${row}`,o.tel2);
+      if(o.zip)  xml=setCellStr(xml,`K${row}`,o.zip);
+      if(o.addr) xml=setCellStr(xml,`L${row}`,o.addr);
+      if(o.msg)  xml=setCellStr(xml,`M${row}`,o.msg);
+      xml=setCellStr(xml,`N${row}`,remitter);
+    }
+    for(let i=0;i<orders.length;i++){
+      const o=orders[i], row=START+i;
+      if(o.code){ xml=setCellSS(xml,`A${row}`,getSsIdx(o.code)); converted++; }
+      else skipped++;
+    }
+
+    // 6. 고정값 셀
+    if(date8){
+      xml=xml.replace(/<c r="B3" s="\d+"[^>]*>[\s\S]*?<\/c>/,`<c r="B3" s="177"><v>${date8}</v></c>`);
+    }
+    // 네이버 계열 고정값
+    if(cfg.adaptorName==='naver'){
+      xml=xml.replace(/<c r="F3" s="(\d+)" t="s"><v>\d+<\/v><\/c>/,`<c r="F3" s="258" t="inlineStr"><is><t>네이버</t></is></c>`);
+    }
+    // 데이세븐 전용 고정값
+    if(currentCvt==='ds'){
+      xml=xml.replace(/<c r="I4" s="(\d+)" t="str"><f>[^<]*<\/f><v>[^<]*<\/v><\/c>/,`<c r="I4" s="336" t="inlineStr"><is><t>데이세븐마켓</t></is></c>`);
+      xml=xml.replace(/<c r="I5" s="(\d+)" t="s"><v>\d+<\/v><\/c>/,`<c r="I5" s="336" t="inlineStr"><is><t>010-8876-6734</t></is></c>`);
+    }
+    // N10, BE10
+    xml=xml.replace(/<c r="N10" s="(\d+)"\/>/,`<c r="N10" s="70" t="inlineStr"><is><t>${remitter}</t></is></c>`);
+    xml=xml.replace(/<c r="BE10" s="(\d+)" t="str"><f>[^<]*<\/f><v[^/]*\/><\/c>/,`<c r="BE10" s="47" t="inlineStr"><is><t>${remitter}</t></is></c>`);
+
+    // 7. sharedStrings 재생성
+    const sstHdr=(ss.match(/<sst [^>]+>/)?.[0]||`<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="${siRaw.length}" uniqueCount="${siRaw.length}">`)
+      .replace(/count="[^"]*"/,`count="${siRaw.length}"`).replace(/uniqueCount="[^"]*"/,`uniqueCount="${siRaw.length}"`);
+    const newSS=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n`+sstHdr+siRaw.join('')+'</sst>';
+
+    prog(80, '파일 재압축 중...');
+    zip.file(SHEET_PATH, xml);
+    zip.file(SS_PATH, newSS);
+    zip.remove('xl/calcChain.xml');
+    const ctFile=zip.file('[Content_Types].xml');
+    if(ctFile){ let ct=await ctFile.async('string'); ct=ct.replace(/<Override[^>]*calcChain[^>]*\/>/g,''); zip.file('[Content_Types].xml',ct); }
+
+    const out=await zip.generateAsync({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',compression:'DEFLATE',compressionOptions:{level:6}});
+    blob=out;
+    window._fileDate=date6;
+
+    prog(100,'완료!');
+
+    // 미리보기
+    const tb=document.getElementById('pb2'); tb.innerHTML='';
+    orders.slice(0,5).forEach(o=>{
+      const tr=document.createElement('tr');
+      tr.innerHTML=`<td>${o.code||'<span style="color:var(--muted)">없음</span>'}</td><td>${o.qty}</td><td>${o.name}</td><td>${o.tel1}</td><td>${o.zip}</td><td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;">${o.addr}</td><td style="max-width:110px;overflow:hidden;text-overflow:ellipsis;">${o.msg||'-'}</td>`;
+      tb.appendChild(tr);
+    });
+    document.getElementById('st1').textContent=orders.length;
+    document.getElementById('st2').textContent=converted;
+    document.getElementById('st3').textContent=skipped;
+    document.getElementById('rsub').textContent=`${orders.length}건 변환 — 원본 서식 100% 보존`;
+    document.getElementById('res').classList.add('on');
+    setTimeout(()=>{ document.getElementById('pb').classList.remove('on'); document.getElementById('st').textContent=''; },1500);
+
+  } catch(e){ showErr(e.message||'알 수 없는 오류'); console.error(e); }
+}
+
+// ── 다운로드 ─────────────────────────────────────────────
+function dl(){
+  if(!blob) return;
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url;
+  const fd=window._fileDate||'이카운트';
+  a.download=fd+CONVERTERS[currentCvt].filenameSuffix;
+  a.click(); URL.revokeObjectURL(url);
+}
+
+// ── 드래그 앤 드롭 ───────────────────────────────────────
+[1,2].forEach(n=>{
+  const z=document.getElementById('z'+n);
+  z.addEventListener('dragover',e=>{e.preventDefault();z.classList.add('drag');});
+  z.addEventListener('dragleave',()=>z.classList.remove('drag'));
+  z.addEventListener('drop',e=>{
+    e.preventDefault(); z.classList.remove('drag');
+    const f=e.dataTransfer.files[0]; if(!f) return;
+    load(n,{files:[f]});
+  });
+});
+</script>
+</body>
+</html>
