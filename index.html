@@ -510,6 +510,9 @@ function extractDate(filename) {
   // 네이버: 20260424 형식
   const mFlat = filename.match(/(20\d{6})/);
   if(mFlat) return { date8: mFlat[1], date6: mFlat[1].slice(2) };
+  // 오늘의집: 260512 형식 (6자리 연월일)
+  const mShort = filename.match(/^(\d{6})[_\-]/);
+  if(mShort) return { date8: '20'+mShort[1], date6: mShort[1] };
   return { date8: '', date6: '' };
 }
 
@@ -587,7 +590,6 @@ async function run() {
       if(o.zip)  xml=setCellStr(xml,`K${row}`,o.zip);
       if(o.addr) xml=setCellStr(xml,`L${row}`,o.addr);
       if(o.msg)  xml=setCellStr(xml,`M${row}`,o.msg);
-      xml=setCellStr(xml,`N${row}`,remitter);
     }
     for(let i=0;i<orders.length;i++){
       const o=orders[i], row=START+i;
