@@ -131,6 +131,16 @@ td{padding:7px 10px;border-bottom:1px solid var(--border);color:var(--text);}
       <div class="card-desc">업체상품코드 → 품목코드<br>자동 변환</div>
       <div class="card-arrow">→</div>
     </div>
+  </div>
+
+  <div class="sec-title">Ohouse</div>
+  <div class="hub-grid">
+    <div class="hub-card" style="--c:#7B61FF;" onclick="showCvt('oh')">
+      <div class="card-platform">Ohouse · Dayseven</div>
+      <div class="card-title">데이세븐<br>오늘의집</div>
+      <div class="card-desc">옵션자체관리코드 → 품목코드<br>자동 변환</div>
+      <div class="card-arrow">→</div>
+    </div>
     <div class="hub-card card-soon" style="--c:#555;">
       <div class="card-platform">Coming Soon</div>
       <div class="card-title">추가 예정</div>
@@ -267,6 +277,24 @@ const CONVERTERS = {
     filenameSuffix: '_데이세븐_쿠팡.xlsx',
     adaptorName: 'coupang',
     remitter: '데이세븐',
+  },
+  oh: {
+    badge:  'ORDER CONVERTER v1.0',
+    brand:  '오늘의집',
+    sub:    '오늘의집 → 이카운트 주문서 (원본 서식 100% 보존)',
+    step2:  '오늘의집 주문서<br><small style="color:var(--muted);font-weight:300;">주문/배송 내역 다운로드 파일</small>',
+    info:   `<strong>📌 자동 변환 항목</strong><div class="mgrid">
+      <div class="mrow"><span class="src">옵션자체관리코드</span><span class="ar">→</span><span class="dst">품목코드 (A열)</span></div>
+      <div class="mrow"><span class="src">수량</span><span class="ar">→</span><span class="dst">수량 (E열)</span></div>
+      <div class="mrow"><span class="src">수취인명</span><span class="ar">→</span><span class="dst">수취인 (H열)</span></div>
+      <div class="mrow"><span class="src">수취인 연락처</span><span class="ar">→</span><span class="dst">전화번호1 (I열)</span></div>
+      <div class="mrow"><span class="src">수취인 우편번호</span><span class="ar">→</span><span class="dst">우편번호 (K열)</span></div>
+      <div class="mrow"><span class="src">수취인 주소+상세</span><span class="ar">→</span><span class="dst">배송주소 (L열)</span></div>
+      <div class="mrow"><span class="src">배송메모</span><span class="ar">→</span><span class="dst">배송메시지 (M열)</span></div>
+    </div>`,
+    filenameSuffix: '_오늘의집.xlsx',
+    adaptorName: 'ohouse',
+    remitter: '오늘의집',
   },
 };
 
@@ -415,6 +443,39 @@ function parseNaver(buf) {
   return orders;
 }
 
+function parseOhouse(buf) {
+  const wb = XLSX.read(buf, {type:'array'});
+  const sn = wb.SheetNames[0];
+  const raw = XLSX.utils.sheet_to_json(wb.Sheets[sn], {header:1, defval:''});
+  let hi=-1;
+  for(let i=0;i<Math.min(raw.length,10);i++){
+    if(raw[i]&&raw[i].includes('주문번호')){ hi=i; break; }
+  }
+  if(hi<0) throw new Error('오늘의집 주문서 헤더 행을 찾을 수 없습니다.');
+  const H=raw[hi], C={};
+  ['수취인명','수취인 연락처','수취인 우편번호','수취인 주소','수취인 주소상세','배송메모','옵션자체관리코드','수량']
+    .forEach(k=>{ C[k]=H.indexOf(k); });
+  const orders=[];
+  for(let i=hi+1;i<raw.length;i++){
+    const row=raw[i];
+    if(!row||!row[C['수취인명']]) continue;
+    const addr1=C['수취인 주소']>=0?String(row[C['수취인 주소']]||'').trim():'';
+    const addr2=C['수취인 주소상세']>=0?String(row[C['수취인 주소상세']]||'').trim():'';
+    const addr=addr2?`${addr1} ${addr2}`.trim():addr1;
+    orders.push({
+      code: C['옵션자체관리코드']>=0?String(row[C['옵션자체관리코드']]||'').trim():'',
+      qty:  C['수량']>=0?(Number(row[C['수량']])||1):1,
+      name: String(row[C['수취인명']]||'').trim(),
+      tel1: C['수취인 연락처']>=0?String(row[C['수취인 연락처']]||'').trim():'',
+      tel2: '',
+      zip:  C['수취인 우편번호']>=0?String(row[C['수취인 우편번호']]||'').trim():'',
+      addr,
+      msg:  C['배송메모']>=0?String(row[C['배송메모']]||'').trim():'',
+    });
+  }
+  return orders;
+}
+
 function parseCoupang(buf) {
   const wb = XLSX.read(buf, {type:'array'});
   const sn = wb.SheetNames[0];
@@ -465,7 +526,7 @@ async function run() {
     prog(10, '주문서 파싱 중...');
 
     // 1. 주문서 파싱
-    const orders = cfg.adaptorName==='naver' ? parseNaver(buf2) : parseCoupang(buf2);
+    const orders = cfg.adaptorName==='naver' ? parseNaver(buf2) : cfg.adaptorName==='ohouse' ? parseOhouse(buf2) : parseCoupang(buf2);
     if(!orders.length){ showErr('변환할 주문 데이터가 없습니다.'); return; }
 
     // 2. 날짜 추출
