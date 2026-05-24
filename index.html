@@ -123,7 +123,7 @@ td{padding:7px 10px;border-bottom:1px solid var(--border);color:var(--text);}
     </div>
   </div>
 
-  <div class="sec-title">Coupang / Ohouse</div>
+  <div class="sec-title">Coupang / Ohouse / Toss</div>
   <div class="hub-grid">
     <div class="hub-card" style="--c:#ff6b6b;" onclick="showCvt('cp')">
       <div class="card-platform">Coupang · Dayseven</div>
@@ -137,10 +137,11 @@ td{padding:7px 10px;border-bottom:1px solid var(--border);color:var(--text);}
       <div class="card-desc">옵션자체관리코드 → 품목코드<br>자동 변환</div>
       <div class="card-arrow">→</div>
     </div>
-    <div class="hub-card card-soon" style="--c:#555;">
-      <div class="card-platform">Coming Soon</div>
-      <div class="card-title">추가 예정</div>
-      <div class="card-desc">새 변환기가<br>곧 추가됩니다</div>
+    <div class="hub-card" style="--c:#4B9EFF;" onclick="showCvt('ts')">
+      <div class="card-platform">Toss · Dayseven</div>
+      <div class="card-title">데이세븐<br>토스쇼핑</div>
+      <div class="card-desc">옵션 관리 코드 → 품목코드<br>자동 변환</div>
+      <div class="card-arrow">→</div>
     </div>
   </div>
 </div>
@@ -272,7 +273,7 @@ const CONVERTERS = {
     </div>`,
     filenameSuffix: '_데이세븐_쿠팡.xlsx',
     adaptorName: 'coupang',
-    remitter: '데이세븐',
+    remitter: '쿠팡',
   },
   oh: {
     badge:  'ORDER CONVERTER v1.0',
@@ -291,6 +292,24 @@ const CONVERTERS = {
     filenameSuffix: '_오늘의집.xlsx',
     adaptorName: 'ohouse',
     remitter: '오늘의집',
+  },
+  ts: {
+    badge:  'ORDER CONVERTER v1.0',
+    brand:  '토스쇼핑',
+    sub:    '토스쇼핑 → 이카운트 주문서 (원본 서식 100% 보존)',
+    step2:  '토스쇼핑 주문서<br><small style="color:var(--muted);font-weight:300;">주문배송관리 다운로드 파일</small>',
+    info:   `<strong>📌 자동 변환 항목</strong><div class="mgrid">
+      <div class="mrow"><span class="src">옵션 관리 코드</span><span class="ar">→</span><span class="dst">품목코드 (A열)</span></div>
+      <div class="mrow"><span class="src">주문건수</span><span class="ar">→</span><span class="dst">수량 (E열)</span></div>
+      <div class="mrow"><span class="src">수령인명</span><span class="ar">→</span><span class="dst">수취인 (H열)</span></div>
+      <div class="mrow"><span class="src">수령인 연락처</span><span class="ar">→</span><span class="dst">전화번호1 (I열)</span></div>
+      <div class="mrow"><span class="src">우편번호</span><span class="ar">→</span><span class="dst">우편번호 (K열)</span></div>
+      <div class="mrow"><span class="src">배송지</span><span class="ar">→</span><span class="dst">배송주소 (L열)</span></div>
+      <div class="mrow"><span class="src">주문요청사항</span><span class="ar">→</span><span class="dst">배송메시지 (M열)</span></div>
+    </div>`,
+    filenameSuffix: '_토스쇼핑.xlsx',
+    adaptorName: 'toss',
+    remitter: '토스쇼핑',
   },
 };
 
@@ -317,6 +336,8 @@ function showHub() {
   document.getElementById('err').classList.remove('on');
   document.getElementById('pb').classList.remove('on');
   document.getElementById('st').textContent = '';
+  document.getElementById('f1').value = '';
+  document.getElementById('f2').value = '';
 }
 
 function showCvt(key) {
@@ -472,6 +493,36 @@ function parseOhouse(buf) {
   return orders;
 }
 
+function parseToss(buf) {
+  const wb = XLSX.read(buf, {type:'array'});
+  const sn = wb.SheetNames[0];
+  const raw = XLSX.utils.sheet_to_json(wb.Sheets[sn], {header:1, defval:''});
+  let hi=-1;
+  for(let i=0;i<Math.min(raw.length,10);i++){
+    if(raw[i]&&raw[i].includes('주문번호')&&raw[i].includes('수령인명')){ hi=i; break; }
+  }
+  if(hi<0) throw new Error('토스쇼핑 주문서 헤더 행을 찾을 수 없습니다.');
+  const H=raw[hi], C={};
+  ['수령인명','수령인 연락처','우편번호','배송지','주문요청사항','옵션 관리 코드','주문건수']
+    .forEach(k=>{ C[k]=H.indexOf(k); });
+  const orders=[];
+  for(let i=hi+2;i<raw.length;i++){  // hi+1은 "수정 불가/가능" 행이므로 스킵
+    const row=raw[i];
+    if(!row||!row[C['수령인명']]) continue;
+    orders.push({
+      code: C['옵션 관리 코드']>=0?String(row[C['옵션 관리 코드']]||'').trim():'',
+      qty:  C['주문건수']>=0?(Number(row[C['주문건수']])||1):1,
+      name: String(row[C['수령인명']]||'').trim(),
+      tel1: C['수령인 연락처']>=0?String(row[C['수령인 연락처']]||'').trim():'',
+      tel2: '',
+      zip:  C['우편번호']>=0?String(row[C['우편번호']]||'').trim():'',
+      addr: C['배송지']>=0?String(row[C['배송지']]||'').trim():'',
+      msg:  C['주문요청사항']>=0?String(row[C['주문요청사항']]||'').trim():'',
+    });
+  }
+  return orders;
+}
+
 function parseCoupang(buf) {
   const wb = XLSX.read(buf, {type:'array'});
   const sn = wb.SheetNames[0];
@@ -504,15 +555,15 @@ function parseCoupang(buf) {
 
 // ── 날짜 추출 ────────────────────────────────────────────
 function extractDate(filename) {
+  // 공통: 파일명 앞 6자리 연월일 우선 (오늘의집: 260512_, 토스: 260526_)
+  const mShort = filename.match(/^(\d{6})[_\-]/);
+  if(mShort) return { date8: '20'+mShort[1], date6: mShort[1] };
   // 쿠팡: 2026-04-27 형식
   const mDash = filename.match(/(\d{4})-(\d{2})-(\d{2})/);
   if(mDash) return { date8: mDash[1]+mDash[2]+mDash[3], date6: (mDash[1]+mDash[2]+mDash[3]).slice(2) };
   // 네이버: 20260424 형식
   const mFlat = filename.match(/(20\d{6})/);
   if(mFlat) return { date8: mFlat[1], date6: mFlat[1].slice(2) };
-  // 오늘의집: 260512 형식 (6자리 연월일)
-  const mShort = filename.match(/^(\d{6})[_\-]/);
-  if(mShort) return { date8: '20'+mShort[1], date6: mShort[1] };
   return { date8: '', date6: '' };
 }
 
@@ -525,7 +576,7 @@ async function run() {
     prog(10, '주문서 파싱 중...');
 
     // 1. 주문서 파싱
-    const orders = cfg.adaptorName==='naver' ? parseNaver(buf2) : cfg.adaptorName==='ohouse' ? parseOhouse(buf2) : parseCoupang(buf2);
+    const orders = cfg.adaptorName==='naver' ? parseNaver(buf2) : cfg.adaptorName==='ohouse' ? parseOhouse(buf2) : cfg.adaptorName==='toss' ? parseToss(buf2) : parseCoupang(buf2);
     if(!orders.length){ showErr('변환할 주문 데이터가 없습니다.'); return; }
 
     // 2. 날짜 추출
@@ -590,6 +641,7 @@ async function run() {
       if(o.zip)  xml=setCellStr(xml,`K${row}`,o.zip);
       if(o.addr) xml=setCellStr(xml,`L${row}`,o.addr);
       if(o.msg)  xml=setCellStr(xml,`M${row}`,o.msg);
+      xml=setCellStr(xml,`N${row}`,remitter);
     }
     for(let i=0;i<orders.length;i++){
       const o=orders[i], row=START+i;
@@ -654,7 +706,7 @@ function dl(){
   if(!blob) return;
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a'); a.href=url;
-  const fd=window._fileDate||'이카운트';
+  const fd = (window._fileDate && window._fileDate.length > 0) ? window._fileDate : '이카운트';
   a.download=fd+CONVERTERS[currentCvt].filenameSuffix;
   a.click(); URL.revokeObjectURL(url);
 }
