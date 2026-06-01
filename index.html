@@ -470,7 +470,7 @@ function parseOhouse(buf) {
   }
   if(hi<0) throw new Error('오늘의집 주문서 헤더 행을 찾을 수 없습니다.');
   const H=raw[hi], C={};
-  ['수취인명','수취인 연락처','수취인 우편번호','수취인 주소','수취인 주소상세','배송메모','옵션자체관리코드','수량']
+  ['수취인명','수취인 연락처','수취인 우편번호','수취인 주소','수취인 주소상세','배송메모','옵션자체관리코드','상품자체관리코드','수량']
     .forEach(k=>{ C[k]=H.indexOf(k); });
   const orders=[];
   for(let i=hi+1;i<raw.length;i++){
@@ -479,8 +479,10 @@ function parseOhouse(buf) {
     const addr1=C['수취인 주소']>=0?String(row[C['수취인 주소']]||'').trim():'';
     const addr2=C['수취인 주소상세']>=0?String(row[C['수취인 주소상세']]||'').trim():'';
     const addr=addr2?`${addr1} ${addr2}`.trim():addr1;
+    const optCode=C['옵션자체관리코드']>=0?String(row[C['옵션자체관리코드']]||'').trim():'';
+    const prodCode=C['상품자체관리코드']>=0?String(row[C['상품자체관리코드']]||'').trim():'';
     orders.push({
-      code: C['옵션자체관리코드']>=0?String(row[C['옵션자체관리코드']]||'').trim():'',
+      code: optCode||prodCode,
       qty:  C['수량']>=0?(Number(row[C['수량']])||1):1,
       name: String(row[C['수취인명']]||'').trim(),
       tel1: C['수취인 연락처']>=0?String(row[C['수취인 연락처']]||'').trim():'',
