@@ -215,7 +215,7 @@ td{padding:7px 10px;border-bottom:1px solid var(--border);color:var(--text);}
 </div>
 
 <!-- 버전 표시: 파일을 고칠 때마다 이 한 줄의 버전과 날짜·시간을 같이 바꾼다 -->
-<div class="app-ver" id="app-ver">v1.2 · 최종 수정 2026-10-27 11:15</div>
+<div class="app-ver" id="app-ver">v1.3 · 최종 수정 2026-10-27 11:22</div>
 
 <!-- 라이브러리 -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -302,7 +302,8 @@ const CONVERTERS = {
     remitter: '오늘의집',
   },
   ts: {
-    badge:  'ORDER CONVERTER v1.0',
+    orderNo: true,
+    badge:  'ORDER CONVERTER v1.1',
     brand:  '토스쇼핑',
     sub:    '토스쇼핑 → 이카운트 주문서 (원본 서식 100% 보존)',
     step2:  '토스쇼핑 주문서<br><small style="color:var(--muted);font-weight:300;">주문배송관리 다운로드 파일</small>',
@@ -314,6 +315,7 @@ const CONVERTERS = {
       <div class="mrow"><span class="src">우편번호</span><span class="ar">→</span><span class="dst">우편번호 (K열)</span></div>
       <div class="mrow"><span class="src">배송지</span><span class="ar">→</span><span class="dst">배송주소 (L열)</span></div>
       <div class="mrow"><span class="src">주문요청사항</span><span class="ar">→</span><span class="dst">배송메시지 (M열)</span></div>
+      <div class="mrow"><span class="src">주문상품번호</span><span class="ar">→</span><span class="dst">주문번호 (O열)</span></div>
     </div>`,
     filenameSuffix: '_토스쇼핑.xlsx',
     adaptorName: 'toss',
@@ -526,13 +528,14 @@ function parseToss(buf) {
   }
   if(hi<0) throw new Error('토스쇼핑 주문서 헤더 행을 찾을 수 없습니다.');
   const H=raw[hi], C={};
-  ['수령인명','수령인 연락처','우편번호','배송지','주문요청사항','옵션 관리 코드','주문건수']
+  ['수령인명','수령인 연락처','우편번호','배송지','주문요청사항','옵션 관리 코드','주문건수','주문상품번호']
     .forEach(k=>{ C[k]=H.indexOf(k); });
   const orders=[];
   for(let i=hi+2;i<raw.length;i++){  // hi+1은 "수정 불가/가능" 행이므로 스킵
     const row=raw[i];
     if(!row||!row[C['수령인명']]) continue;
     orders.push({
+      orderNo: C['주문상품번호']>=0?String(row[C['주문상품번호']]||'').trim():'',
       code: C['옵션 관리 코드']>=0?String(row[C['옵션 관리 코드']]||'').trim():'',
       qty:  C['주문건수']>=0?(Number(row[C['주문건수']])||1):1,
       name: String(row[C['수령인명']]||'').trim(),
@@ -661,7 +664,7 @@ async function run() {
       const o=orders[i], row=START+i;
       xml=setCellNum(xml,`E${row}`,o.qty);
       if(cfg.orderNo){
-        // 쿠팡 주문번호(14자리)·버디베어 상품주문번호(16자리)를 글자로 넣는다. 숫자로 넣으면 자릿수가 깨질 수 있다.
+        // 쿠팡 주문번호(13~14자리)·버디베어 상품주문번호(16자리)·토스 주문상품번호(9자리)를 글자로 넣는다. 숫자로 넣으면 자릿수가 깨질 수 있다.
         const before=xml;
         if(o.orderNo) xml=setCellStr(xml,`O${row}`,o.orderNo);
         if(o.orderNo && xml!==before) orderNoSet++; else orderNoFail++;
