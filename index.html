@@ -206,7 +206,7 @@ td{padding:7px 10px;border-bottom:1px solid var(--border);color:var(--text);}
     </div>
     <div class="plbl">// 미리보기 (최대 5건)</div>
     <div class="twrap">
-      <table><thead><tr><th>품목코드</th><th>수량</th><th>수취인</th><th>전화번호1</th><th>우편번호</th><th>배송주소</th><th>배송메시지</th></tr></thead>
+      <table><thead><tr><th>품목코드</th><th>수량</th><th>수취인</th><th>전화번호1</th><th>우편번호</th><th>배송주소</th><th>배송메시지</th><th>주문번호</th></tr></thead>
       <tbody id="pb2"></tbody></table>
     </div>
     <button class="dl" onclick="dl()">⬇ 이카운트 주문서 다운로드 (.xlsx)</button>
@@ -258,7 +258,7 @@ const CONVERTERS = {
     remitter: '버디베어',
   },
   cp: {
-    badge:  'ORDER CONVERTER v1.0',
+    badge:  'ORDER CONVERTER v1.1',
     brand:  '데이세븐 쿠팡',
     sub:    '데이세븐 쿠팡 → 이카운트 주문서 (원본 서식 100% 보존)',
     step2:  '쿠팡 주문서<br><small style="color:var(--muted);font-weight:300;">배송관리 다운로드 파일</small>',
@@ -270,6 +270,7 @@ const CONVERTERS = {
       <div class="mrow"><span class="src">우편번호</span><span class="ar">→</span><span class="dst">우편번호 (K열)</span></div>
       <div class="mrow"><span class="src">수취인 주소</span><span class="ar">→</span><span class="dst">배송주소 (L열)</span></div>
       <div class="mrow"><span class="src">배송메세지</span><span class="ar">→</span><span class="dst">배송메시지 (M열)</span></div>
+      <div class="mrow"><span class="src">주문번호</span><span class="ar">→</span><span class="dst">주문번호 (O열)</span></div>
     </div>`,
     filenameSuffix: '_데이세븐_쿠팡.xlsx',
     adaptorName: 'coupang',
@@ -418,6 +419,18 @@ function setCellNum(xml,cellRef,value){
   return result;
 }
 
+// 이카운트 양식 O열(주문번호)은 공유 수식(<f t="shared">)이라, 마스터 칸을 값으로 바꾸면 아래 칸이 깨진다.
+// 그래서 O열만 칸마다 개별 수식으로 풀어 둔다(수식 내용은 그대로, 행 번호만 바뀜).
+function expandSharedO(xml){
+  const masters={};
+  return xml.replace(/<c r="O(\d+)"([^>]*)><f t="shared"(?: ref="[^"]*")? si="(\d+)"(?:\/>|>([^<]*)<\/f>)/g,(all,row,attrs,si,text)=>{
+    if(text!==undefined) masters[si]={row,text};
+    const mm=masters[si]; if(!mm) return all;
+    const f=mm.text.replace(new RegExp('(\\$A|U)'+mm.row+'(?!\\d)','g'),(a,p)=>p+row);
+    return `<c r="O${row}"${attrs}><f>${f}</f>`;
+  });
+}
+
 // ── 주문서 파싱 어댑터 ──────────────────────────────────
 function parseNaver(buf) {
   const wb = XLSX.read(buf, {type:'array'});
@@ -535,13 +548,14 @@ function parseCoupang(buf) {
   }
   if(hi<0) throw new Error('쿠팡 주문서 헤더 행을 찾을 수 없습니다.');
   const H=raw[hi], C={};
-  ['수취인이름','수취인전화번호','우편번호','수취인 주소','배송메세지','업체상품코드','구매수(수량)']
+  ['수취인이름','수취인전화번호','우편번호','수취인 주소','배송메세지','업체상품코드','구매수(수량)','주문번호']
     .forEach(k=>{ C[k]=H.indexOf(k); });
   const orders=[];
   for(let i=hi+1;i<raw.length;i++){
     const row=raw[i];
     if(!row||!row[C['수취인이름']]) continue;
     orders.push({
+      orderNo: C['주문번호']>=0?String(row[C['주문번호']]||'').trim():'',
       code: C['업체상품코드']>=0?String(row[C['업체상품코드']]||'').trim():'',
       qty:  C['구매수(수량)']>=0?(Number(row[C['구매수(수량)']])||1):1,
       name: String(row[C['수취인이름']]||'').trim(),
@@ -599,6 +613,7 @@ async function run() {
 
     let xml = await sheetFile.async('string');
     let ss  = await ssFile.async('string');
+    if(cfg.adaptorName==='coupang') xml = expandSharedO(xml);
 
     // 4. sharedStrings 파싱
     const siRaw=[], siMap={};
@@ -632,11 +647,17 @@ async function run() {
     }
 
     // 5. 데이터 삽입
-    const START=17; let converted=0, skipped=0;
+    const START=17; let converted=0, skipped=0, orderNoSet=0, orderNoFail=0;
     const remitter = cfg.remitter;
     for(let i=0;i<orders.length;i++){
       const o=orders[i], row=START+i;
       xml=setCellNum(xml,`E${row}`,o.qty);
+      if(cfg.adaptorName==='coupang'){
+        // 쿠팡 주문번호(14자리)를 글자로 넣는다. 숫자로 넣으면 자릿수가 깨질 수 있다.
+        const before=xml;
+        if(o.orderNo) xml=setCellStr(xml,`O${row}`,o.orderNo);
+        if(o.orderNo && xml!==before) orderNoSet++; else orderNoFail++;
+      }
       if(o.name) xml=setCellStr(xml,`H${row}`,o.name);
       if(o.tel1) xml=setCellStr(xml,`I${row}`,o.tel1);
       if(o.tel2) xml=setCellStr(xml,`J${row}`,o.tel2);
@@ -690,13 +711,14 @@ async function run() {
     const tb=document.getElementById('pb2'); tb.innerHTML='';
     orders.slice(0,5).forEach(o=>{
       const tr=document.createElement('tr');
-      tr.innerHTML=`<td>${o.code||'<span style="color:var(--muted)">없음</span>'}</td><td>${o.qty}</td><td>${o.name}</td><td>${o.tel1}</td><td>${o.zip}</td><td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;">${o.addr}</td><td style="max-width:110px;overflow:hidden;text-overflow:ellipsis;">${o.msg||'-'}</td>`;
+      tr.innerHTML=`<td>${o.code||'<span style="color:var(--muted)">없음</span>'}</td><td>${o.qty}</td><td>${o.name}</td><td>${o.tel1}</td><td>${o.zip}</td><td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;">${o.addr}</td><td style="max-width:110px;overflow:hidden;text-overflow:ellipsis;">${o.msg||'-'}</td><td>${o.orderNo||'-'}</td>`;
       tb.appendChild(tr);
     });
     document.getElementById('st1').textContent=orders.length;
     document.getElementById('st2').textContent=converted;
     document.getElementById('st3').textContent=skipped;
-    document.getElementById('rsub').textContent=`${orders.length}건 변환 — 원본 서식 100% 보존`;
+    document.getElementById('rsub').textContent=`${orders.length}건 변환 — 원본 서식 100% 보존`
+      +(cfg.adaptorName==='coupang'?` / 주문번호 ${orderNoSet}건 입력`+(orderNoFail?` ⚠ ${orderNoFail}건은 주문번호가 비었거나 넣지 못함(이카운트 수식 값이 남음)`:''):'');
     document.getElementById('res').classList.add('on');
     setTimeout(()=>{ document.getElementById('pb').classList.remove('on'); document.getElementById('st').textContent=''; },1500);
 
