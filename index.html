@@ -93,6 +93,7 @@ th{background:var(--bg);color:var(--muted);padding:8px 10px;text-align:left;font
 td{padding:7px 10px;border-bottom:1px solid var(--border);color:var(--text);}
 .dl{width:100%;padding:12px;background:var(--accent);border:none;color:#000;font-family:'Bebas Neue',sans-serif;font-size:1.1rem;letter-spacing:3px;cursor:pointer;border-radius:2px;}
 .dl:hover{opacity:.9;}
+.app-ver{position:fixed;right:12px;bottom:10px;z-index:5;font-family:'Space Mono',monospace;font-size:.68rem;color:var(--muted);letter-spacing:.5px;background:rgba(10,10,15,.8);padding:3px 8px;border:1px solid var(--border);border-radius:2px;pointer-events:none;}
 </style>
 </head>
 <body>
@@ -213,6 +214,9 @@ td{padding:7px 10px;border-bottom:1px solid var(--border);color:var(--text);}
   </div>
 </div>
 
+<!-- 버전 표시: 파일을 고칠 때마다 이 한 줄의 버전과 날짜·시간을 같이 바꾼다 -->
+<div class="app-ver" id="app-ver">v1.2 · 최종 수정 2026-10-27 11:15</div>
+
 <!-- 라이브러리 -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -240,7 +244,8 @@ const CONVERTERS = {
     remitter: '데이세븐',
   },
   bb: {
-    badge:  'ORDER CONVERTER v1.0',
+    orderNo: true,
+    badge:  'ORDER CONVERTER v1.1',
     brand:  '버디베어 스마트스토어',
     sub:    '버디베어 스마트스토어 → 이카운트 주문서 (원본 서식 100% 보존)',
     step2:  '스마트스토어 주문서<br><small style="color:var(--muted);font-weight:300;">발주발송관리 시트 포함</small>',
@@ -252,12 +257,14 @@ const CONVERTERS = {
       <div class="mrow"><span class="src">우편번호</span><span class="ar">→</span><span class="dst">우편번호 (K열)</span></div>
       <div class="mrow"><span class="src">통합배송지</span><span class="ar">→</span><span class="dst">배송주소 (L열)</span></div>
       <div class="mrow"><span class="src">배송메세지</span><span class="ar">→</span><span class="dst">배송메시지 (M열)</span></div>
+      <div class="mrow"><span class="src">상품주문번호</span><span class="ar">→</span><span class="dst">주문번호 (O열)</span></div>
     </div>`,
     filenameSuffix: '_버디베어.xlsx',
     adaptorName: 'naver',
     remitter: '버디베어',
   },
   cp: {
+    orderNo: true,
     badge:  'ORDER CONVERTER v1.1',
     brand:  '데이세븐 쿠팡',
     sub:    '데이세븐 쿠팡 → 이카운트 주문서 (원본 서식 100% 보존)',
@@ -443,7 +450,7 @@ function parseNaver(buf) {
   }
   if(hi<0) throw new Error('스마트스토어 헤더 행을 찾을 수 없습니다.');
   const H=raw[hi], C={};
-  ['수취인명','수취인연락처1','수취인연락처2','우편번호','통합배송지','기본배송지','상세배송지','배송메세지','옵션관리코드','수량','판매자 상품코드']
+  ['수취인명','수취인연락처1','수취인연락처2','우편번호','통합배송지','기본배송지','상세배송지','배송메세지','옵션관리코드','수량','판매자 상품코드','상품주문번호']
     .forEach(k=>{ C[k]=H.indexOf(k); });
   const orders=[];
   for(let i=hi+1;i<raw.length;i++){
@@ -461,6 +468,7 @@ function parseNaver(buf) {
     const codeW=C['옵션관리코드']>=0?String(row[C['옵션관리코드']]||'').trim():'';
     const codeAO=C['판매자 상품코드']>=0?String(row[C['판매자 상품코드']]||'').trim():'';
     orders.push({
+      orderNo: C['상품주문번호']>=0?String(row[C['상품주문번호']]||'').trim():'',
       code: codeW||codeAO,
       qty: C['수량']>=0?(Number(row[C['수량']])||1):1,
       name: String(row[C['수취인명']]||'').trim(),
@@ -613,7 +621,7 @@ async function run() {
 
     let xml = await sheetFile.async('string');
     let ss  = await ssFile.async('string');
-    if(cfg.adaptorName==='coupang') xml = expandSharedO(xml);
+    if(cfg.orderNo) xml = expandSharedO(xml);
 
     // 4. sharedStrings 파싱
     const siRaw=[], siMap={};
@@ -652,8 +660,8 @@ async function run() {
     for(let i=0;i<orders.length;i++){
       const o=orders[i], row=START+i;
       xml=setCellNum(xml,`E${row}`,o.qty);
-      if(cfg.adaptorName==='coupang'){
-        // 쿠팡 주문번호(14자리)를 글자로 넣는다. 숫자로 넣으면 자릿수가 깨질 수 있다.
+      if(cfg.orderNo){
+        // 쿠팡 주문번호(14자리)·버디베어 상품주문번호(16자리)를 글자로 넣는다. 숫자로 넣으면 자릿수가 깨질 수 있다.
         const before=xml;
         if(o.orderNo) xml=setCellStr(xml,`O${row}`,o.orderNo);
         if(o.orderNo && xml!==before) orderNoSet++; else orderNoFail++;
@@ -718,7 +726,7 @@ async function run() {
     document.getElementById('st2').textContent=converted;
     document.getElementById('st3').textContent=skipped;
     document.getElementById('rsub').textContent=`${orders.length}건 변환 — 원본 서식 100% 보존`
-      +(cfg.adaptorName==='coupang'?` / 주문번호 ${orderNoSet}건 입력`+(orderNoFail?` ⚠ ${orderNoFail}건은 주문번호가 비었거나 넣지 못함(이카운트 수식 값이 남음)`:''):'');
+      +(cfg.orderNo?` / 주문번호 ${orderNoSet}건 입력`+(orderNoFail?` ⚠ ${orderNoFail}건은 주문번호가 비었거나 넣지 못함(이카운트 수식 값이 남음)`:''):'');
     document.getElementById('res').classList.add('on');
     setTimeout(()=>{ document.getElementById('pb').classList.remove('on'); document.getElementById('st').textContent=''; },1500);
 
